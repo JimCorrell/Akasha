@@ -26,7 +26,8 @@
   },
   "smart_notices": {
     "muted": {
-      "done_import": true
+      "done_import": true,
+      "new_version_available": true
     }
   },
   "smart_view_filter": {

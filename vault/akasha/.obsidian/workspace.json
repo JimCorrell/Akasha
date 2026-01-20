@@ -27,42 +27,26 @@
             "state": {
               "type": "smart-release-notes-view",
               "state": {},
-              "icon": "file-text",
-              "title": "Release Notes"
+              "icon": "lucide-ghost",
+              "title": "smart-release-notes-view"
             }
           },
           {
-            "id": "1564a9c97f51d90e",
+            "id": "0a5ce45ac1ccbee5",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "correll test note.md",
-                "mode": "source",
-                "source": false
+                "file": "2026 ABCA/GTO Meets Exploitative Pitching.md",
+                "mode": "preview",
+                "source": true
               },
               "icon": "lucide-file",
-              "title": "correll test note"
+              "title": "GTO Meets Exploitative Pitching"
             }
           }
         ],
         "currentTab": 2
-      },
-      {
-        "id": "7facdde3e25d08f6",
-        "type": "tabs",
-        "children": [
-          {
-            "id": "e72701594667a070",
-            "type": "leaf",
-            "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
-            }
-          }
-        ]
       }
     ],
     "direction": "vertical"
@@ -221,7 +205,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 300,
+    "collapsed": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -239,9 +224,21 @@
       "smart-connections-visualizer:Open smart connections visualizer": false
     }
   },
-  "active": "1564a9c97f51d90e",
+  "active": "0a5ce45ac1ccbee5",
   "lastOpenFiles": [
+    "2026 ABCA/The Swing Works, Your Eyes Don't!.md",
+    "2026 ABCA/GTO Meets Exploitative Pitching.md",
+    "2026 ABCA/Welcome, Awards Presentation.md",
+    "2026 ABCA/2026 ABCA Clinic Agenda.md",
+    "People/Tony Abbatine.md",
+    "2026 ABCA/2026 ABCA.base",
+    "People/Robert Woodard.md",
+    "People/Jay Johnson.md",
+    "2026 ABCA/Building a Championship Program.md",
+    "Untitled.md",
+    "People",
     "Welcome.md",
+    "2026 ABCA",
     "correll test note.md"
   ]
 }
