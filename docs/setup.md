@@ -1,143 +1,179 @@
 # Akasha Setup Guide
 
-Complete setup instructions for getting Akasha up and running.
+## Prerequisites
 
-## Phase 1: Foundation Setup
+- macOS (Raycast integration is macOS-only)
+- Python 3.12+ — `brew install python`
+- Poetry — `brew install poetry`
+- [Obsidian](https://obsidian.md) installed
+- [Raycast](https://raycast.com) installed
 
-This phase focuses on validating the semantic retrieval workflow using existing tools.
+---
 
-### 1. Obsidian Setup
+## 1. Install the API service
 
-#### Install Obsidian
-Download from: https://obsidian.md
-
-#### Create or Link Your Vault
-
-**Option A: Create New Vault**
 ```bash
-cd akasha
-mkdir vault
+cd akasha-core
+poetry install
 ```
-Then in Obsidian: "Open folder as vault" → select `akasha/vault`
 
-**Option B: Use Existing Vault**
+## 2. Configure `.env`
+
 ```bash
-cd akasha
-ln -s ~/path/to/your/existing/vault ./vault
+cp .env.example .env
 ```
 
-#### Install Required Plugins
+Edit `.env` with your settings:
 
-1. Open Obsidian Settings → Community Plugins
-2. Disable Safe Mode
-3. Browse and install:
-   - **Smart Connections** (required for semantic search)
-   - **Templater** (optional, for note templates)
-   - **Dataview** (optional, for note queries)
+```env
+# Required
+AKASHA_VAULT_PATH=/path/to/your/obsidian/vault
 
-#### Configure Smart Connections
+# Optional — defaults work for most setups
+AKASHA_CHROMA_PATH=~/.akasha/chroma
+AKASHA_EMBEDDING_BACKEND=local
+AKASHA_LOCAL_EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+AKASHA_API_HOST=127.0.0.1
+AKASHA_API_PORT=8765
 
-1. Settings → Smart Connections
-2. Set OpenAI API key (or use local model)
-3. Configure embedding model (default: text-embedding-ada-002)
-4. Enable "Show Smart Connections" in sidebar
-
-### 2. Raycast Setup
-
-#### Install Raycast
-Download from: https://raycast.com
-
-#### Configure Hotkey
-1. Raycast Preferences → General
-2. Set Raycast Hotkey (recommend: `Option + Space`)
-3. This keeps `Cmd + Space` for Spotlight if desired
-
-#### Install Obsidian Extension
-
-1. Open Raycast
-2. Type "Store" → Enter
-3. Search "Obsidian"
-4. Install the Obsidian extension
-5. Configure vault path in extension settings
-
-#### Test Integration
-
-1. Press Raycast hotkey
-2. Type "Search Obsidian" or just start typing note names
-3. Should see your notes appear
-
-### 3. Optional: Readwise Integration
-
-For automatic highlight capture from books, articles, podcasts.
-
-1. Sign up at: https://readwise.io ($8/mo after trial)
-2. Connect your reading sources (Kindle, Instapaper, etc.)
-3. Enable Obsidian export in Readwise settings
-4. Configure export location to your vault
-
-### 4. Initial Note Structure
-
-Consider organizing your vault:
-
-```
-vault/
-├── inbox/              # Quick captures, unsorted
-├── areas/              # Ongoing topics (work, health, hobbies)
-├── projects/           # Active projects
-├── resources/          # Reference material
-└── archive/            # Completed or inactive
+# Required only for ebook ingestion
+AKASHA_ANTHROPIC_API_KEY=sk-ant-...
+AKASHA_CLAUDE_MODEL=claude-sonnet-4-6
 ```
 
-Or use whatever structure works for you—Akasha will handle retrieval regardless.
+**Vault location note**: iCloud Drive works reliably with Obsidian on macOS. OneDrive can cause sync issues with the Files On-Demand feature — if using OneDrive, pin the vault folder for offline access.
 
-### 5. Validation Period
+## 3. Index your vault
 
-**Goal**: Use this setup for 2-4 weeks and track:
+```bash
+cd akasha-core
+poetry run akasha-index
+```
 
-✅ When semantic search helps vs. keyword search
-✅ When you still rely on memory instead of searching
-✅ What contexts you want to query from (VS Code, browser, etc.)
-✅ What automation would help (capture, linking, etc.)
+On first run this downloads the embedding model (~33MB). Subsequent runs skip unchanged files.
 
-**Document your findings** in `docs/validation-notes.md`
+To force a full re-index (e.g. after changing embedding model):
 
-## Phase 2: Custom API Setup (Future)
+```bash
+poetry run akasha-index --force
+```
 
-This section will be populated when you're ready to build the custom retrieval layer.
+## 4. Start the API server
 
-### Prerequisites (TBD)
-- Python 3.11+
-- Poetry or pip
-- PostgreSQL (if using pgvector)
-- OpenAI API key or local LLM
+```bash
+poetry run akasha-serve
+```
 
-### Installation (TBD)
-Instructions will be added after Phase 1 validation.
+The server runs on `http://localhost:8765` and watches your vault for changes, re-indexing new or modified notes automatically.
+
+Verify it's running:
+
+```bash
+curl http://localhost:8765/health
+```
+
+## 5. Set up Raycast
+
+1. Open Raycast → **Settings** → **Extensions** → **Script Commands**
+2. Click **Add Directories** and add:
+   ```
+   /path/to/akasha/scripts/raycast
+   ```
+3. Two commands will appear: **Akasha Search** and **Akasha Open Note**
+
+**Akasha Search** auto-starts the API server if it's not running, so you don't need to keep a terminal open.
+
+---
+
+## Ingesting Ebooks
+
+Akasha can process EPUB and PDF ebooks into structured vault notes (one note per chapter, plus a book index note).
+
+**Requires** `AKASHA_ANTHROPIC_API_KEY` in `.env`.
+
+```bash
+cd akasha-core
+poetry run akasha-ingest /path/to/book.epub
+poetry run akasha-ingest /path/to/book.pdf
+```
+
+Notes are written to `Books/{Book Title}/` in your vault and indexed automatically.
+
+Typical cost: ~$0.05–0.15 per book at Claude Sonnet rates.
+
+---
+
+## API Reference
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/health` | GET | Server status + note count |
+| `/stats` | GET | Vault path, model, total notes |
+| `/search` | POST | Semantic search |
+
+### Search request
+
+```json
+{
+  "query": "your question",
+  "limit": 5,
+  "threshold": 0.0
+}
+```
+
+`threshold` is minimum cosine similarity (0–1). Set to `0.5` to filter weak matches.
+
+### Search response
+
+```json
+{
+  "results": [
+    {
+      "title": "Note Title",
+      "path": "relative/path/to/note.md",
+      "snippet": "First line of note content...",
+      "score": 0.812,
+      "tags": ["tag1", "tag2"],
+      "modified": "2026-05-04T15:00:00"
+    }
+  ],
+  "query_time_ms": 45.2,
+  "total_notes": 142
+}
+```
+
+---
+
+## Switching to OpenAI Embeddings
+
+If you prefer OpenAI embeddings over the local model:
+
+```env
+AKASHA_EMBEDDING_BACKEND=openai
+AKASHA_OPENAI_API_KEY=sk-...
+AKASHA_OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+```
+
+**Important**: switching embedding backends requires a full re-index because vector dimensions differ (384 local vs 1536 OpenAI):
+
+```bash
+poetry run akasha-index --force
+```
+
+---
 
 ## Troubleshooting
 
-### Obsidian Smart Connections not working
-- Check OpenAI API key is set correctly
-- Verify you have credits in your OpenAI account
-- Try regenerating embeddings: Command Palette → "Smart Connections: Regenerate Embeddings"
+**Server won't start — address already in use**
+```bash
+kill $(lsof -ti:8765)
+```
 
-### Raycast can't find notes
-- Verify vault path in Raycast Obsidian extension settings
-- Rebuild Raycast index: Command Palette → "Rebuild Index"
+**Search returns no results**
+- Check `akasha-index` has been run and completed without errors
+- Verify `AKASHA_VAULT_PATH` points to the right directory
+- Run `curl http://localhost:8765/stats` to confirm note count > 0
 
-### Notes not syncing
-- If using multiple devices, consider Obsidian Sync ($8/mo) or iCloud/Dropbox
-- Git is also an option for technical users
-
-## Next Steps
-
-After setup:
-1. Start capturing notes regularly
-2. Test semantic search with Smart Connections
-3. Use Raycast for quick access
-4. Document what works and what doesn't
-5. After 2-4 weeks, review findings and decide on Phase 2
-
-## Questions?
-
-Create an issue in the repo or update the documentation as you learn!
+**Ebook ingestion fails mid-book**
+- Check `AKASHA_ANTHROPIC_API_KEY` is set correctly
+- The book may have a chapter with unusual formatting — re-run; already-written notes are not overwritten

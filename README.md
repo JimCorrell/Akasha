@@ -15,125 +15,169 @@ A "second brain" that:
 
 ## Project Status
 
-### Current Phase: Foundation & Validation
+### Current Phase: Custom Retrieval Layer (Phase 2 — In Progress)
 
 - ✅ Project initialized
-- ⬜ Obsidian vault setup with Smart Connections
-- ⬜ Raycast integration configured
-- ⬜ 2-4 week validation period
-- ⬜ Document retrieval patterns and pain points
+- ✅ Phase 1 skipped — vault-only workflow validated as insufficient
+- ✅ FastAPI semantic search service (`akasha-core/`)
+- ✅ Local embeddings via fastembed (no API key required)
+- ✅ ChromaDB vector store
+- ✅ Vault file watcher (auto-indexes on save)
+- ✅ Raycast integration (search from anywhere)
+- ✅ Ebook ingestion pipeline (EPUB + PDF → structured vault notes)
+- ⬜ Retrieval quality tuning (Phase 2.2)
+- ⬜ Context-aware retrieval (Phase 2.4)
+- ⬜ Full TypeScript Raycast extension (Phase 3)
 
 ## Architecture
 
-### Phase 1: Foundation (Current)
-
-```bash
-Obsidian (markdown notes)
-    ↓
-Smart Connections Plugin (semantic search within Obsidian)
-    ↓
-Raycast Extension (quick access from anywhere)
 ```
-
-### Phase 2: Custom Retrieval Layer (Future)
-
-```bash
-Obsidian Vault (~/vault/)
-    ↓
-Akasha Core (FastAPI)
-  - Vector embeddings
-  - Semantic search
-  - Context-aware retrieval
-    ↓
-Multiple Interfaces:
-  - Raycast extension (macOS-wide access)
-  - VS Code extension (coding context)
-  - CLI tool (terminal workflow)
-  - Web UI (review & curation)
+Obsidian Vault (markdown files)
+        │
+        ├── Manual notes
+        └── Ingested books (EPUB/PDF → Claude API → structured notes)
+        │
+        ↓ (watchdog file watcher)
+Akasha Core (FastAPI — localhost:8765)
+  ├── Embedding Service (fastembed, local — no API key)
+  ├── Vector Store (ChromaDB at ~/.akasha/chroma)
+  └── Search API (POST /search)
+        │
+        ↓ (HTTP)
+Raycast Script Commands
+  ├── Akasha Search  — semantic search from anywhere
+  └── Akasha Open    — open note directly in Obsidian
 ```
 
 ## Repository Structure
 
-```bash
+```
 akasha/
-├── vault/                    # Obsidian notes (not in git by default)
-├── docs/                     # Project documentation
-│   ├── architecture.md       # Technical design decisions
-│   ├── roadmap.md           # Development phases
-│   └── setup.md             # Setup instructions
-├── akasha-core/             # FastAPI service (Phase 2)
-├── scripts/                 # Utility scripts
-│   └── raycast/            # Raycast integration scripts
-└── README.md               # This file
+├── akasha-core/              # FastAPI service
+│   ├── akasha/
+│   │   ├── config.py         # Settings (env-driven)
+│   │   ├── main.py           # FastAPI app + vault watcher
+│   │   ├── indexer.py        # Vault scanning + embedding
+│   │   ├── ingest.py         # Ebook ingestion pipeline
+│   │   ├── store.py          # ChromaDB wrapper
+│   │   ├── embeddings.py     # fastembed / OpenAI backends
+│   │   ├── watcher.py        # watchdog file watcher
+│   │   └── cli.py            # akasha-index / akasha-ingest commands
+│   ├── pyproject.toml
+│   └── .env.example
+├── scripts/
+│   └── raycast/              # Raycast Script Commands
+│       ├── akasha-search.py  # Semantic search
+│       └── akasha-open.py    # Open note in Obsidian
+├── docs/                     # Documentation
+│   ├── architecture.md
+│   ├── roadmap.md
+│   ├── setup.md
+│   └── validation-notes.md
+├── vault/                    # Obsidian notes (excluded from git)
+└── books_to_ingest/          # Drop ebooks here (excluded from git)
 ```
 
 ## Quick Start
 
 ### Prerequisites
 
-- macOS (for Raycast integration)
-- Obsidian installed
-- Raycast installed
+- macOS
+- Python 3.12+ (via Homebrew: `brew install python`)
+- Poetry (`brew install poetry`)
+- Obsidian
+- Raycast
 
-### Setup
+### Install
 
-1. **Configure Obsidian**
+```bash
+cd akasha-core
+poetry install
+cp .env.example .env
+# Edit .env — set AKASHA_VAULT_PATH at minimum
+```
 
-   ```bash
-   # Create or link your vault
-   ln -s ~/Documents/ObsidianVault ./vault
-   ```
+### Index your vault
 
-2. **Install Obsidian Plugins**
+```bash
+poetry run akasha-index
+```
 
-   - Smart Connections (for semantic search)
-   - Any other preferred plugins
+### Start the API server
 
-3. **Configure Raycast**
-   - Install Obsidian extension from Raycast Store
-   - Point to your vault location
+```bash
+poetry run akasha-serve
+# Runs on http://localhost:8765
+# Watches vault for changes and re-indexes automatically
+```
 
-See [docs/setup.md](docs/setup.md) for detailed instructions.
+### Ingest an ebook
 
-## Philosophy
+```bash
+# Requires AKASHA_ANTHROPIC_API_KEY in .env
+poetry run akasha-ingest /path/to/book.epub
+poetry run akasha-ingest /path/to/book.pdf
+```
 
-### Start Simple, Customize When Justified
+### Search
 
-- Use existing tools (Obsidian, Raycast) for foundation
-- Build custom components only when they solve validated problems
-- Maintain data portability (markdown, JSON)
-- Local-first, with cloud sync as option
+```bash
+# Via curl
+curl -s -X POST http://localhost:8765/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "your question here", "limit": 5}'
 
-### Hybrid Approach
+# Via Raycast (after setup — see docs/setup.md)
+# ⌘ Space → "Akasha Search" → type your query
+```
 
-- Managed tools for storage and editing (Obsidian)
-- Custom AI layer for intelligent retrieval
-- Thin clients for universal access
+## Configuration
+
+All settings are prefixed with `AKASHA_` in `.env`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `VAULT_PATH` | `~/vault/akasha` | Path to your Obsidian vault |
+| `CHROMA_PATH` | `~/.akasha/chroma` | ChromaDB data directory |
+| `EMBEDDING_BACKEND` | `local` | `local` or `openai` |
+| `LOCAL_EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | fastembed model |
+| `API_HOST` | `127.0.0.1` | Server host |
+| `API_PORT` | `8765` | Server port |
+| `ANTHROPIC_API_KEY` | _(empty)_ | Required for ebook ingestion |
+| `CLAUDE_MODEL` | `claude-sonnet-4-6` | Model used for ingestion |
 
 ## Technology Stack
 
-### Current (Phase 1)
-
-- **Storage**: Obsidian (markdown files)
-- **Semantic Search**: Smart Connections plugin
-- **Quick Access**: Raycast + Obsidian extension
-
-### Planned (Phase 2)
-
-- **API**: FastAPI + Python 3.11+
-- **Vector Store**: TBD (Pinecone, pgvector, or ChromaDB)
-- **Embeddings**: OpenAI or sentence-transformers
+- **API**: FastAPI + uvicorn (Python 3.14)
+- **Vector Store**: ChromaDB (local, persistent)
+- **Embeddings**: fastembed `BAAI/bge-small-en-v1.5` (local, no API key)
 - **File Watching**: watchdog
-- **Clients**: Raycast extension (TypeScript), CLI (Python)
+- **Ebook Ingestion**: ebooklib (EPUB), PyMuPDF (PDF), Claude API (summarization)
+- **Dependency Management**: Poetry
+- **Clients**: Raycast Script Commands (Python)
+
+## Philosophy
+
+### Local-First
+
+All data lives on your machine. The vector store, embeddings, and vault are local by default. No telemetry, no cloud lock-in.
+
+### Build Only What's Justified
+
+Phase 1 (Obsidian + Smart Connections only) was validated as insufficient — the workflow didn't fit daily habits. Phase 2 builds the minimum custom layer needed: a search API and lightweight clients.
+
+### Data Portability
+
+Notes are plain markdown with YAML frontmatter. The vector store is a cache — if lost, `akasha-index --force` rebuilds it from the vault in minutes.
 
 ## Inspiration
 
-The name "Akasha" comes from the Sanskrit concept of a cosmic record of all knowledge and events. This project aims to create your personal Akashic Records—a queryable repository of everything you've learned and thought about.
+The name "Akasha" comes from the Sanskrit concept of a cosmic record of all knowledge and events. This project aims to create your personal Akashic Records — a queryable repository of everything you've learned and thought about.
 
 ## License
 
-MIT (or your preference)
+MIT
 
 ## Author
 
-Jim Correll - Lead Developer
+Jim Correll

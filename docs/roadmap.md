@@ -9,47 +9,18 @@ Akasha follows a phased approach: validate the concept with existing tools, then
 ## Phase 1: Foundation & Validation
 
 **Timeline**: 2-4 weeks  
-**Status**: 🟡 In Progress
+**Status**: ✅ Complete (skipped — see validation-notes.md)
 
-### Goals
-- Set up core workflow with Obsidian + Raycast
-- Validate that semantic retrieval improves productivity
-- Identify pain points that justify custom development
-- Establish note-taking habits and patterns
+### Decision
 
-### Tasks
-
-- [ ] **Environment Setup**
-  - [ ] Install Obsidian
-  - [ ] Install and configure Smart Connections plugin
-  - [ ] Install Raycast
-  - [ ] Configure Raycast Obsidian extension
-  - [ ] Optional: Set up Readwise for automated capture
-
-- [ ] **Workflow Validation** (2-4 weeks)
-  - [ ] Capture notes regularly across different domains
-  - [ ] Use semantic search daily via Smart Connections
-  - [ ] Access notes via Raycast hotkey
-  - [ ] Document when retrieval helps vs. when you still rely on memory
-  - [ ] Track contexts where you want to search (coding, writing, etc.)
-
-- [ ] **Success Metrics**
-  - [ ] 50+ notes created
-  - [ ] Using semantic search 5+ times per week
-  - [ ] Can articulate specific limitations of current setup
-  - [ ] Clear use cases for custom API identified
-
-### Deliverables
-- Working Obsidian + Raycast setup
-- `docs/validation-notes.md` documenting findings
-- Decision: Proceed to Phase 2 or adjust approach
+Formal validation period skipped. Vault sat unused after setup — treated as the signal itself. The Obsidian-only workflow didn't fit daily habits; the friction of switching contexts to search was the core problem. Proceeded directly to Phase 2 on 2026-05-04.
 
 ---
 
 ## Phase 2: Custom Retrieval Layer
 
 **Timeline**: 4-6 weeks  
-**Status**: ⚪ Not Started  
+**Status**: 🟡 In Progress  
 **Prerequisites**: Phase 1 validated with clear pain points
 
 ### Goals
@@ -60,26 +31,34 @@ Akasha follows a phased approach: validate the concept with existing tools, then
 
 ### Milestones
 
-#### 2.1: Core API (Week 1-2)
-- [ ] Project setup with Poetry
-- [ ] FastAPI basic structure
-- [ ] Vault file watcher implementation
-- [ ] Embedding generation pipeline
-- [ ] Vector store integration (ChromaDB initially)
-- [ ] Basic `/search` endpoint
+#### 2.1: Core API (Week 1-2) ✅
+- [x] Project setup with Poetry
+- [x] FastAPI basic structure
+- [x] Vault file watcher implementation
+- [x] Embedding generation pipeline (fastembed local model, OpenAI optional)
+- [x] Vector store integration (ChromaDB)
+- [x] Basic `/search` endpoint
+
+#### 2.1b: Ebook Ingestion Pipeline ✅
+- [x] EPUB extraction (ebooklib + BeautifulSoup)
+- [x] PDF extraction (PyMuPDF, TOC-driven or page-chunked)
+- [x] Claude API integration for chapter summarization (tool use, structured output)
+- [x] Hierarchical vault notes: book index + one note per chapter
+- [x] Chapter title cleaning (strips redundant "Chapter N:" prefixes)
+- [x] `akasha-ingest` CLI command
 
 #### 2.2: Retrieval Quality (Week 2-3)
-- [ ] Query embedding generation
-- [ ] Semantic similarity search
+- [ ] Snippet extraction improvements
 - [ ] Result ranking and filtering
-- [ ] Snippet extraction for previews
 - [ ] Response time optimization (<500ms target)
+- [ ] TOC-driven chapter extraction (accurate chapter numbers, front matter filtering)
 
-#### 2.3: Raycast Integration (Week 3-4)
-- [ ] Simple bash script for Raycast
-- [ ] Test end-to-end workflow
-- [ ] Add result formatting
-- [ ] Implement file opening in Obsidian
+#### 2.3: Raycast Integration (Week 3-4) ✅
+- [x] Python Script Commands for Raycast (`scripts/raycast/`)
+- [x] End-to-end search workflow tested
+- [x] Formatted results with score bars and tags
+- [x] File opening in Obsidian via `obsidian://` URLs
+- [x] Auto-start server if not running
 
 #### 2.4: Context Awareness (Week 4-5)
 - [ ] Detect active application
@@ -101,9 +80,9 @@ Akasha follows a phased approach: validate the concept with existing tools, then
 - Performance metrics and benchmarks
 
 ### Technology Decisions
-- **Vector Store**: ChromaDB (start simple)
-- **Embeddings**: OpenAI text-embedding-3-small
-- **File Watching**: watchdog library
+- **Vector Store**: ChromaDB ✅
+- **Embeddings**: fastembed `BAAI/bge-small-en-v1.5` (local, free); OpenAI optional via `AKASHA_EMBEDDING_BACKEND=openai` ✅
+- **File Watching**: watchdog ✅
 - **Testing**: pytest + real vault subset
 
 ---

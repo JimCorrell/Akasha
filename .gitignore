@@ -1,0 +1,23 @@
+# Environment / secrets
+.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Poetry
+akasha-core/.venv/
+
+# ChromaDB data
+.akasha/
+
+# macOS
+.DS_Store
+
+# Vault (notes stay local, not in git)
+vault/
+
+books_to_ingest/
