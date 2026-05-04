@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "akasha-core"
+version = "0.1.0"
+description = "Semantic search API for personal knowledge management"
+authors = ["Jim Correll"]
+packages = [{include = "akasha"}]
+
+[tool.poetry.dependencies]
+python = ">=3.12"
+fastapi = ">=0.115"
+uvicorn = {version = ">=0.30", extras = ["standard"]}
+chromadb = ">=1.0"
+openai = ">=1.50"
+watchdog = ">=4.0"
+pydantic-settings = ">=2.0"
+python-frontmatter = ">=1.1"
+typer = ">=0.12"
+pyyaml = ">=6.0"
+fastembed = "^0.8.0"
+anthropic = "^0.98.0"
+ebooklib = "^0.20"
+pymupdf = "^1.27.2.3"
+beautifulsoup4 = "^4.14.3"
+
+[tool.poetry.scripts]
+akasha-serve = "akasha.main:run"
+akasha-index = "akasha.cli:index_main"
+akasha-ingest = "akasha.cli:ingest_main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
