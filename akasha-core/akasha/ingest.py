@@ -29,6 +29,49 @@ class Chapter:
 # Text extraction
 # ---------------------------------------------------------------------------
 
+def _toc_title_map(toc_items, _result: dict | None = None) -> dict[str, str]:
+    """Flatten book.toc into {spine_href: clean_title}.
+
+    First-write-wins: chapter-level entries appear before sub-sections in the
+    TOC, so the chapter title beats any deeper section that shares the same file.
+    """
+    from ebooklib.epub import Link
+    result = _result if _result is not None else {}
+    for item in toc_items:
+        if isinstance(item, Link):
+            href = item.href.split("#")[0]
+            if item.title and href not in result:
+                result[href] = item.title
+        elif isinstance(item, tuple) and len(item) == 2:
+            section, children = item
+            if hasattr(section, "href") and section.href and section.title:
+                href = section.href.split("#")[0]
+                if href not in result:
+                    result[href] = section.title
+            _toc_title_map(children, result)
+    return result
+
+
+_SKIP_TITLES = {
+    "copyright", "copyrights", "dedication", "contents", "table of contents",
+    "foreword", "preface", "acknowledgments", "acknowledgements",
+    "about this book", "about the authors", "about the author",
+    "about the cover illustration", "about the cover", "about the cover image",
+    "index", "references", "bibliography", "glossary",
+    "colophon", "also by", "praise for",
+}
+
+
+def _is_skippable(title: str) -> bool:
+    lower = title.lower().strip()
+    if lower in _SKIP_TITLES:
+        return True
+    # Skip structural Part dividers (Part 1, Part II, etc.)
+    if re.match(r"^part\s+\w+", lower):
+        return True
+    return False
+
+
 def extract_epub(path: Path) -> tuple[str, str, list[Chapter]]:
     """Returns (title, author, chapters) from an EPUB file."""
     import ebooklib
@@ -42,6 +85,9 @@ def extract_epub(path: Path) -> tuple[str, str, list[Chapter]]:
     title = title_meta[0][0] if title_meta else path.stem
     author = author_meta[0][0] if author_meta else "Unknown"
 
+    # Build href → clean title map from the book's own TOC
+    toc_titles = _toc_title_map(book.toc)
+
     chapters = []
     for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
         soup = BeautifulSoup(item.get_content(), "html.parser")
@@ -54,8 +100,23 @@ def extract_epub(path: Path) -> tuple[str, str, list[Chapter]]:
         if len(text) < 300:
             continue
 
-        heading = soup.find(["h1", "h2", "h3"])
-        chapter_title = heading.get_text(strip=True) if heading else f"Section {len(chapters) + 1}"
+        # Prefer TOC title (clean, no number prefix, no concatenation artifacts)
+        # Fall back to first heading, using separator=" " to avoid word-squishing
+        item_href = item.get_name()
+        chapter_title = (
+            toc_titles.get(item_href)
+            or toc_titles.get(item_href.split("/")[-1])  # try basename only
+        )
+        if not chapter_title:
+            heading = soup.find(["h1", "h2", "h3"])
+            chapter_title = (
+                heading.get_text(separator=" ", strip=True)
+                if heading
+                else f"Section {len(chapters) + 1}"
+            )
+
+        if _is_skippable(chapter_title):
+            continue
 
         chapters.append(Chapter(
             number=len(chapters) + 1,
@@ -131,17 +192,35 @@ _CHAPTER_TOOL = {
         "properties": {
             "summary": {
                 "type": "string",
-                "description": "2-4 paragraphs capturing the main ideas and arguments",
+                "description": (
+                    "A detailed, reference-quality summary (4-6 paragraphs). "
+                    "Write as if the reader will use this note INSTEAD of re-reading the chapter. "
+                    "Include specific frameworks, concrete examples, named techniques, and exact "
+                    "recommendations. Do not write vague topic descriptions — write the actual knowledge."
+                ),
             },
-            "key_concepts": {
+            "key_takeaways": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "5-10 key concepts or ideas from the chapter",
+                "description": (
+                    "10-15 specific, actionable insights. Each must be concrete enough to act on — "
+                    "not a topic label. Bad: 'Data-driven decisions are important.' "
+                    "Good: 'Document every technology decision with: business problem, options considered, "
+                    "data points evaluated, and final recommendation — this creates a defensible audit trail.'"
+                ),
+            },
+            "frameworks": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Named frameworks, models, processes, or methodologies introduced or explained "
+                    "in this chapter. Include a one-sentence description of each."
+                ),
             },
             "quotes": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Up to 5 notable quotes worth remembering",
+                "description": "Up to 5 notable quotes worth remembering (exact text from the chapter).",
             },
             "tags": {
                 "type": "array",
@@ -149,7 +228,7 @@ _CHAPTER_TOOL = {
                 "description": "3-6 lowercase hyphenated descriptive tags",
             },
         },
-        "required": ["summary", "key_concepts", "quotes", "tags"],
+        "required": ["summary", "key_takeaways", "frameworks", "quotes", "tags"],
     },
 }
 
@@ -179,7 +258,15 @@ _BOOK_TOOL = {
 }
 
 _CHAPTER_PROMPT = """\
-You are extracting key knowledge from a book chapter for a personal knowledge base.
+You are building a personal knowledge base from this book chapter. The reader will use \
+these notes as a permanent reference — they may never re-read the original chapter.
+
+Your job is to capture SPECIFIC, USABLE knowledge. Not "the author discusses leadership" \
+but the actual leadership advice, frameworks, and techniques described. Not "data matters" \
+but the specific data-gathering approach recommended and why.
+
+Be concrete. Name the frameworks. Quote the exact advice. Include the specific steps, \
+criteria, and examples from the text. A vague summary has no value — specificity is everything.
 
 Book: "{title}" by {author}
 Chapter {number}: "{chapter_title}"
@@ -188,7 +275,7 @@ Chapter {number}: "{chapter_title}"
 {text}
 ---
 
-Extract and save the key knowledge from this chapter.\
+Extract and save the knowledge from this chapter.\
 """
 
 _BOOK_PROMPT = """\
@@ -254,27 +341,33 @@ def _slugify(text: str, max_len: int = 60) -> str:
 
 
 def _clean_chapter_title(title: str) -> str:
-    """Strip leading chapter/part number prefixes that duplicate the note number.
+    """Strip leading number/label prefixes from chapter titles.
 
-    Handles patterns like:
-      "Chapter 1: Foo"  → "Foo"
-      "Chapter 1 - Foo" → "Foo"
-      "1. Foo"          → "Foo"
-      "1 - Foo"         → "Foo"
-      "CHAPTER ONE Foo" → "Foo"
+    Handles:
+      "Chapter 1: Foo"   → "Foo"
+      "Chapter 1 - Foo"  → "Foo"
+      "CHAPTER ONE Foo"  → "Foo"
+      "1. Foo"           → "Foo"
+      "1 - Foo"          → "Foo"
+      "1 Foo"            → "Foo"   (TOC-sourced titles with leading number)
+      "appendix Foo"     → "Foo"
     """
-    # "Chapter N: title", "Chapter N - title", "Chapter N. title", "Chapter N title"
-    title = re.sub(
-        r"^chapter\s+[\w]+[\s:.\-–—]+",
-        "",
-        title,
-        flags=re.IGNORECASE,
-    ).strip()
-    # "Part N: title" — keep "Part N" as context, just strip the delimiter
-    title = re.sub(r"^(part\s+[\w]+)\s*[:\-–—]\s*", r"\1 - ", title, flags=re.IGNORECASE)
-    # Leading "N. title" or "N - title" or "N: title"
+    # Normalize unicode whitespace (em-space, thin space, etc.)
+    title = re.sub(r"[ -‏    　]", " ", title).strip()
+
+    # "Chapter N: title" / "Chapter N - title" / "Chapter N. title" / "Chapter N title"
+    title = re.sub(r"^chapter\s+\w+[\s:.\-–—]+", "", title, flags=re.IGNORECASE).strip()
+
+    # "appendix title"
+    title = re.sub(r"^appendix\s+", "", title, flags=re.IGNORECASE).strip()
+
+    # "N. title" / "N - title" / "N: title"
     title = re.sub(r"^\d+\s*[.:\-–—]\s*", "", title).strip()
-    return title or title  # return original if everything got stripped
+
+    # "N title" — number followed by a space then text (TOC format, no separator)
+    title = re.sub(r"^\d+\s+", "", title).strip()
+
+    return title or title
 
 
 def _yaml_tags(tags: list[str]) -> str:
@@ -291,8 +384,11 @@ def write_chapter_note(vault_path: Path, book_dir_name: str, title: str, author:
     note_path = note_dir / filename
 
     tags = extracted.get("tags", [])
-    concepts = "\n".join(f"- {c}" for c in extracted.get("key_concepts", []))
+    takeaways = "\n".join(f"- {t}" for t in extracted.get("key_takeaways", []))
+    frameworks = "\n".join(f"- {f}" for f in extracted.get("frameworks", []))
     quotes = "\n\n".join(f'> "{q}"' for q in extracted.get("quotes", []))
+
+    frameworks_section = f"\n## Frameworks & Models\n{frameworks}\n" if frameworks else ""
 
     note_path.write_text(f"""\
 ---
@@ -309,9 +405,9 @@ tags:
 ## Summary
 {extracted.get("summary", "")}
 
-## Key Concepts
-{concepts}
-
+## Key Takeaways
+{takeaways}
+{frameworks_section}
 ## Notable Quotes
 {quotes if quotes else "_None extracted._"}
 
