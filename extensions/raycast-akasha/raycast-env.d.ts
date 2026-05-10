@@ -24,6 +24,8 @@ declare namespace Preferences {
   export type Search = ExtensionPreferences & {}
   /** Preferences accessible in the `ask` command */
   export type Ask = ExtensionPreferences & {}
+  /** Preferences accessible in the `ingest` command */
+  export type Ingest = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
@@ -31,5 +33,7 @@ declare namespace Arguments {
   export type Search = {}
   /** Arguments passed to the `ask` command */
   export type Ask = {}
+  /** Arguments passed to the `ingest` command */
+  export type Ingest = {}
 }
 
