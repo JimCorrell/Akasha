@@ -487,13 +487,18 @@ def ingest(path: Path, vault_path: Path | None = None, on_progress=None) -> Path
     chapter_results = []
     chapter_filenames = []
 
+    if on_progress:
+        on_progress(f"📖 {title} by {author} — {len(chapters)} chapters")
+
     for chapter in chapters:
+        if on_progress:
+            on_progress(f"Processing chapter {chapter.number}/{len(chapters)}: {chapter.title}")
         extracted = process_chapter(client, title, author, chapter)
         note_path = write_chapter_note(vault, book_dir_name, title, author, chapter, extracted)
         chapter_results.append(extracted)
         chapter_filenames.append(note_path.name)
         if on_progress:
-            on_progress(f"Chapter {chapter.number}: {chapter.title}")
+            on_progress(f"✓ Chapter {chapter.number}: {chapter.title}")
 
     # Write book index
     overview = process_book_overview(client, title, author, chapter_results)

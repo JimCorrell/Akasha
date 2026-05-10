@@ -38,3 +38,15 @@ class AskResponse(BaseModel):
     answer: str
     sources: list[NoteResult]
     query_time_ms: float
+
+
+class IngestRequest(BaseModel):
+    path: str  # absolute path to the .epub or .pdf file
+
+
+class IngestJobResponse(BaseModel):
+    job_id: str
+    status: str
+    messages: list[str]
+    result: str | None = None   # vault-relative path to the book index note
+    error: str | None = None

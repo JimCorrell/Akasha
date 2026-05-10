@@ -18,6 +18,12 @@
       "title": "Ask Akasha",
       "description": "Ask a question and get an answer synthesized from your knowledge base",
       "mode": "view"
+    },
+    {
+      "name": "ingest",
+      "title": "Ingest Book",
+      "description": "Add an EPUB or PDF book to your knowledge base",
+      "mode": "view"
     }
   ],
   "preferences": [
