@@ -1,3 +1,4 @@
+import re
 import time
 from contextlib import asynccontextmanager
 
@@ -18,6 +19,46 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Akasha", version="0.1.0", lifespan=lifespan)
+
+
+def _relevant_snippet(body: str, query: str, window: int = 400) -> str:
+    """Return the passage in body most relevant to the query terms."""
+    if not body:
+        return ""
+
+    # Meaningful query terms (skip short stop words)
+    terms = [t.lower() for t in re.split(r"\W+", query) if len(t) > 2]
+
+    # Candidate lines: non-empty, not headings, not list-only markers
+    lines = [
+        l.strip()
+        for l in body.splitlines()
+        if l.strip() and not l.strip().startswith("#")
+    ]
+    if not lines:
+        return body[:window]
+
+    if not terms:
+        return " ".join(lines)[:window]
+
+    # Score each line by how many query terms it contains
+    scores = []
+    for line in lines:
+        lower = line.lower()
+        scores.append(sum(1 for t in terms if t in lower))
+
+    best_idx = max(range(len(scores)), key=lambda i: scores[i])
+
+    # Grab a window of lines centred on the best match
+    start = max(0, best_idx - 1)
+    end = min(len(lines), best_idx + 4)
+    snippet = " ".join(lines[start:end])
+
+    # If best line had zero term matches, fall back to opening passage
+    if scores[best_idx] == 0:
+        snippet = " ".join(lines[:5])
+
+    return snippet[:window]
 
 
 @app.get("/health")
@@ -49,7 +90,7 @@ def search(req: SearchRequest):
         NoteResult(
             title=r["metadata"].get("title", ""),
             path=r["metadata"].get("path", ""),
-            snippet=r["snippet"],
+            snippet=_relevant_snippet(r["snippet"], req.query),
             score=round(r["score"], 4),
             tags=[t for t in r["metadata"].get("tags", "").split(",") if t],
             modified=r["metadata"].get("modified"),
