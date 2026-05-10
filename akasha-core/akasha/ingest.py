@@ -13,10 +13,10 @@ import anthropic
 
 from .config import settings
 
-
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class Chapter:
@@ -29,6 +29,7 @@ class Chapter:
 # Text extraction
 # ---------------------------------------------------------------------------
 
+
 def _toc_title_map(toc_items, _result: dict | None = None) -> dict[str, str]:
     """Flatten book.toc into {spine_href: clean_title}.
 
@@ -36,6 +37,7 @@ def _toc_title_map(toc_items, _result: dict | None = None) -> dict[str, str]:
     TOC, so the chapter title beats any deeper section that shares the same file.
     """
     from ebooklib.epub import Link
+
     result = _result if _result is not None else {}
     for item in toc_items:
         if isinstance(item, Link):
@@ -53,12 +55,28 @@ def _toc_title_map(toc_items, _result: dict | None = None) -> dict[str, str]:
 
 
 _SKIP_TITLES = {
-    "copyright", "copyrights", "dedication", "contents", "table of contents",
-    "foreword", "preface", "acknowledgments", "acknowledgements",
-    "about this book", "about the authors", "about the author",
-    "about the cover illustration", "about the cover", "about the cover image",
-    "index", "references", "bibliography", "glossary",
-    "colophon", "also by", "praise for",
+    "copyright",
+    "copyrights",
+    "dedication",
+    "contents",
+    "table of contents",
+    "foreword",
+    "preface",
+    "acknowledgments",
+    "acknowledgements",
+    "about this book",
+    "about the authors",
+    "about the author",
+    "about the cover illustration",
+    "about the cover",
+    "about the cover image",
+    "index",
+    "references",
+    "bibliography",
+    "glossary",
+    "colophon",
+    "also by",
+    "praise for",
 }
 
 
@@ -75,8 +93,8 @@ def _is_skippable(title: str) -> bool:
 def extract_epub(path: Path) -> tuple[str, str, list[Chapter]]:
     """Returns (title, author, chapters) from an EPUB file."""
     import ebooklib
-    from ebooklib import epub
     from bs4 import BeautifulSoup
+    from ebooklib import epub
 
     book = epub.read_epub(str(path), options={"ignore_ncx": True})
 
@@ -118,11 +136,13 @@ def extract_epub(path: Path) -> tuple[str, str, list[Chapter]]:
         if _is_skippable(chapter_title):
             continue
 
-        chapters.append(Chapter(
-            number=len(chapters) + 1,
-            title=chapter_title,
-            text=text,
-        ))
+        chapters.append(
+            Chapter(
+                number=len(chapters) + 1,
+                title=chapter_title,
+                text=text,
+            )
+        )
 
     return title, author, chapters
 
@@ -156,8 +176,7 @@ def _pdf_by_toc(doc, toc_entries: list[tuple[str, int]]) -> list[Chapter]:
     for i, (ch_title, start_page) in enumerate(toc_entries):
         end_page = toc_entries[i + 1][1] if i + 1 < len(toc_entries) else len(doc) + 1
         text = "\n".join(
-            doc[p].get_text()
-            for p in range(max(0, start_page - 1), min(end_page - 1, len(doc)))
+            doc[p].get_text() for p in range(max(0, start_page - 1), min(end_page - 1, len(doc)))
         ).strip()
         if len(text) < 300:
             continue
@@ -172,11 +191,13 @@ def _pdf_by_page_chunks(doc, pages_per_chunk: int = 25) -> list[Chapter]:
         text = "\n".join(doc[p].get_text() for p in range(start, end)).strip()
         if len(text) < 300:
             continue
-        chapters.append(Chapter(
-            number=len(chapters) + 1,
-            title=f"Pages {start + 1}–{end}",
-            text=text,
-        ))
+        chapters.append(
+            Chapter(
+                number=len(chapters) + 1,
+                title=f"Pages {start + 1}–{end}",
+                text=text,
+            )
+        )
     return chapters
 
 
@@ -315,11 +336,11 @@ def process_chapter(client: anthropic.Anthropic, title: str, author: str, chapte
     return _call_claude_tool(client, _CHAPTER_TOOL, prompt)
 
 
-def process_book_overview(client: anthropic.Anthropic, title: str, author: str,
-                           chapter_results: list[dict]) -> dict:
+def process_book_overview(
+    client: anthropic.Anthropic, title: str, author: str, chapter_results: list[dict]
+) -> dict:
     summaries = "\n\n".join(
-        f"Chapter {i + 1}: {r.get('summary', '')[:600]}"
-        for i, r in enumerate(chapter_results)
+        f"Chapter {i + 1}: {r.get('summary', '')[:600]}" for i, r in enumerate(chapter_results)
     )
     prompt = _BOOK_PROMPT.format(
         title=title,
@@ -332,6 +353,7 @@ def process_book_overview(client: anthropic.Anthropic, title: str, author: str,
 # ---------------------------------------------------------------------------
 # Note writing
 # ---------------------------------------------------------------------------
+
 
 def _slugify(text: str, max_len: int = 60) -> str:
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
@@ -374,8 +396,14 @@ def _yaml_tags(tags: list[str]) -> str:
     return "\n".join(f"  - {t}" for t in tags)
 
 
-def write_chapter_note(vault_path: Path, book_dir_name: str, title: str, author: str,
-                        chapter: Chapter, extracted: dict) -> Path:
+def write_chapter_note(
+    vault_path: Path,
+    book_dir_name: str,
+    title: str,
+    author: str,
+    chapter: Chapter,
+    extracted: dict,
+) -> Path:
     note_dir = vault_path / "Books" / book_dir_name
     note_dir.mkdir(parents=True, exist_ok=True)
 
@@ -390,7 +418,8 @@ def write_chapter_note(vault_path: Path, book_dir_name: str, title: str, author:
 
     frameworks_section = f"\n## Frameworks & Models\n{frameworks}\n" if frameworks else ""
 
-    note_path.write_text(f"""\
+    note_path.write_text(
+        f"""\
 ---
 type: book-chapter
 book: "{title}"
@@ -413,13 +442,21 @@ tags:
 
 ## My Notes
 <!-- Add your own thoughts here -->
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
 
     return note_path
 
 
-def write_book_note(vault_path: Path, book_dir_name: str, title: str, author: str,
-                     overview: dict, chapter_filenames: list[str]) -> Path:
+def write_book_note(
+    vault_path: Path,
+    book_dir_name: str,
+    title: str,
+    author: str,
+    overview: dict,
+    chapter_filenames: list[str],
+) -> Path:
     note_dir = vault_path / "Books" / book_dir_name
     note_dir.mkdir(parents=True, exist_ok=True)
 
@@ -428,11 +465,10 @@ def write_book_note(vault_path: Path, book_dir_name: str, title: str, author: st
     tags = overview.get("tags", [])
     themes = "\n".join(f"- {t}" for t in overview.get("key_themes", []))
     # Wikilinks use filename without extension
-    chapter_links = "\n".join(
-        f"- [[{Path(f).stem}]]" for f in chapter_filenames
-    )
+    chapter_links = "\n".join(f"- [[{Path(f).stem}]]" for f in chapter_filenames)
 
-    note_path.write_text(f"""\
+    note_path.write_text(
+        f"""\
 ---
 type: book
 title: "{title}"
@@ -452,7 +488,9 @@ tags:
 
 ## Chapters
 {chapter_links}
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
 
     return note_path
 
@@ -460,6 +498,7 @@ tags:
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
+
 
 def ingest(path: Path, vault_path: Path | None = None, on_progress=None) -> Path:
     """

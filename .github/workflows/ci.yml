@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Python: lint, format, test ──────────────────────────────────────────────
+  python:
+    name: Python lint & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: akasha-core
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Install dependencies
+        run: poetry install --with dev
+
+      - name: Lint (ruff)
+        run: poetry run ruff check .
+
+      - name: Format check (ruff)
+        run: poetry run ruff format --check .
+
+      - name: Run tests
+        run: poetry run pytest
+
+  # ── TypeScript: build (includes tsc type-check) ─────────────────────────────
+  typescript:
+    name: TypeScript build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extensions/raycast-akasha
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: extensions/raycast-akasha/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (type-check + compile)
+        run: npm run build

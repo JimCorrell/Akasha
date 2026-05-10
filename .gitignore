@@ -25,3 +25,4 @@ books_to_ingest/
 # Node / Raycast extension
 node_modules/
 extensions/raycast-akasha/dist/
+extensions/raycast-akasha/raycast-env.d.ts

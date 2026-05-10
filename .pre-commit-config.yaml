@@ -1,0 +1,31 @@
+repos:
+  # Python — lint and format with ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.12
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^akasha-core/
+      - id: ruff-format
+        files: ^akasha-core/
+
+  # General hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  # TypeScript — build (includes tsc type-check)
+  - repo: local
+    hooks:
+      - id: raycast-build
+        name: Raycast extension build
+        language: system
+        entry: bash -c 'cd extensions/raycast-akasha && npm run build'
+        pass_filenames: false
+        files: ^extensions/raycast-akasha/src/

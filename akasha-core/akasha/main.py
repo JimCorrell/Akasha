@@ -7,13 +7,19 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI, HTTPException
 
+from . import ask as ask_module
+from . import embeddings, jobs, store, watcher
 from .config import settings
 from .models import (
-    AskRequest, AskResponse,
-    IngestJobResponse, IngestRequest,
-    NoteResult, SearchRequest, SearchResponse, StatsResponse,
+    AskRequest,
+    AskResponse,
+    IngestJobResponse,
+    IngestRequest,
+    NoteResult,
+    SearchRequest,
+    SearchResponse,
+    StatsResponse,
 )
-from . import ask as ask_module, embeddings, jobs, store, watcher
 
 
 @asynccontextmanager
@@ -37,9 +43,9 @@ def _relevant_snippet(body: str, query: str, window: int = 400) -> str:
 
     # Candidate lines: non-empty, not headings, not list-only markers
     lines = [
-        l.strip()
-        for l in body.splitlines()
-        if l.strip() and not l.strip().startswith("#")
+        line.strip()
+        for line in body.splitlines()
+        if line.strip() and not line.strip().startswith("#")
     ]
     if not lines:
         return body[:window]
@@ -151,8 +157,8 @@ def ask(req: AskRequest):
 def _run_ingest_job(job: jobs.Job, path: Path) -> None:
     """Background thread: ingest a book and update the job as it progresses."""
     try:
-        from .ingest import ingest
         from .indexer import index_note
+        from .ingest import ingest
 
         def on_progress(msg: str) -> None:
             job.messages.append(msg)

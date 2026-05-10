@@ -5,8 +5,8 @@ from pathlib import Path
 
 import frontmatter
 
-from .config import settings
 from . import embeddings, store
+from .config import settings
 
 
 def _parse_note(path: Path) -> dict:
@@ -57,9 +57,8 @@ def _build_embed_text(title: str, body: str, note_type: str) -> str:
     if note_type == "book-chapter":
         parts = [title]
         for section in ("## Summary", "## Key Takeaways", "## Frameworks"):
-            m = re.search(
-                rf"{re.escape(section)}\n(.*?)(?=\n##|\Z)", body, re.DOTALL
-            )
+            # Match the section heading even if it has extra words (e.g. "## Frameworks & Models")
+            m = re.search(rf"{re.escape(section)}[^\n]*\n(.*?)(?=\n##|\Z)", body, re.DOTALL)
             if m:
                 parts.append(m.group(1).strip())
         if len(parts) > 1:

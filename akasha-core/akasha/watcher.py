@@ -3,17 +3,14 @@ from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from .config import settings
 from . import indexer
+from .config import settings
 
 
 class _VaultHandler(FileSystemEventHandler):
     def _should_handle(self, src_path: str) -> bool:
         path = Path(src_path)
-        return (
-            path.suffix == ".md"
-            and not indexer._is_hidden(path)
-        )
+        return path.suffix == ".md" and not indexer._is_hidden(path)
 
     def on_modified(self, event):
         if not event.is_directory and self._should_handle(event.src_path):
