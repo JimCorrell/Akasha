@@ -19,14 +19,16 @@ def _parse_note(path: Path) -> dict:
     if isinstance(tags, str):
         tags = [tags]
 
+    note_type = str(meta.get("type", ""))
+
     return {
         "title": str(title),
         "path": str(path.relative_to(settings.vault_path)),
         "tags": [str(t) for t in tags],
-        "snippet": _extract_snippet(body),
+        "body": _clean_body(body),
         "modified": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
-        "type": str(meta.get("type", "")),
-        "embed_text": f"{title}\n\n{body}",
+        "type": note_type,
+        "embed_text": _build_embed_text(title, body, note_type),
         "content_hash": hashlib.md5(path.read_bytes()).hexdigest(),
     }
 
@@ -38,18 +40,32 @@ def _first_heading(text: str) -> str | None:
     return None
 
 
-def _extract_snippet(body: str, max_len: int = 200) -> str:
-    for line in body.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or line.startswith("---"):
-            continue
-        # strip wikilinks and markdown links
-        line = re.sub(r"\[\[([^\]]+)\]\]", r"\1", line)
-        line = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", line)
-        line = line.strip()
-        if line:
-            return line[:max_len]
-    return ""
+def _clean_body(body: str) -> str:
+    """Strip markdown syntax noise for display and passage extraction."""
+    # Strip wikilinks and markdown links
+    body = re.sub(r"\[\[([^\]]+)\]\]", r"\1", body)
+    body = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", body)
+    # Strip list bullets and blockquote markers
+    body = re.sub(r"^[-*>]\s+", "", body, flags=re.MULTILINE)
+    # Collapse excessive blank lines
+    body = re.sub(r"\n{3,}", "\n\n", body)
+    return body.strip()
+
+
+def _build_embed_text(title: str, body: str, note_type: str) -> str:
+    """Build text to embed. For book chapters, focus on the dense knowledge sections."""
+    if note_type == "book-chapter":
+        parts = [title]
+        for section in ("## Summary", "## Key Takeaways", "## Frameworks"):
+            m = re.search(
+                rf"{re.escape(section)}\n(.*?)(?=\n##|\Z)", body, re.DOTALL
+            )
+            if m:
+                parts.append(m.group(1).strip())
+        if len(parts) > 1:
+            return "\n\n".join(parts)
+    # Default: title + full body
+    return f"{title}\n\n{body}"
 
 
 def note_id(path: Path) -> str:
@@ -72,7 +88,7 @@ def index_note(path: Path) -> bool:
             "content_hash": note["content_hash"],
         }
         embedding = embeddings.embed(note["embed_text"])
-        store.upsert(note_id(path), embedding, metadata, note["snippet"])
+        store.upsert(note_id(path), embedding, metadata, note["body"])
         return True
     except Exception as e:
         print(f"  Error indexing {path.name}: {e}")
