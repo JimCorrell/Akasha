@@ -1,0 +1,59 @@
+{
+  "name": "akasha",
+  "title": "Akasha",
+  "description": "Semantic search for your personal knowledge base",
+  "icon": "extension-icon.png",
+  "author": "jimcorrell",
+  "categories": ["Productivity"],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "search",
+      "title": "Search Akasha",
+      "description": "Semantic search across your personal knowledge base",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "apiUrl",
+      "title": "API URL",
+      "description": "Akasha API server URL",
+      "type": "textfield",
+      "required": false,
+      "default": "http://localhost:8765"
+    },
+    {
+      "name": "vaultName",
+      "title": "Obsidian Vault Name",
+      "description": "Name of your Obsidian vault (used to build obsidian:// links)",
+      "type": "textfield",
+      "required": false,
+      "default": "akasha"
+    },
+    {
+      "name": "akashaCoreDir",
+      "title": "Akasha Core Directory",
+      "description": "Absolute path to the akasha-core directory (enables auto-start)",
+      "type": "textfield",
+      "required": false,
+      "default": ""
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.79.0",
+    "@raycast/utils": "^1.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "@types/react": "19.0.10",
+    "typescript": "^5.4.0"
+  },
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "lint": "ray lint",
+    "fix-lint": "ray lint --fix",
+    "publish": "npx @raycast/api@latest publish"
+  }
+}
