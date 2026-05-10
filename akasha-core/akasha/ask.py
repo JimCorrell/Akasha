@@ -32,12 +32,14 @@ def build_context(raw_results: list[dict]) -> str:
     parts = []
     for i, r in enumerate(raw_results, 1):
         body = r["snippet"][:_MAX_BODY_CHARS]  # "snippet" is now the full cleaned body
-        parts.append(_CONTEXT_TEMPLATE.format(
-            i=i,
-            title=r["metadata"].get("title", ""),
-            path=r["metadata"].get("path", ""),
-            body=body,
-        ))
+        parts.append(
+            _CONTEXT_TEMPLATE.format(
+                i=i,
+                title=r["metadata"].get("title", ""),
+                path=r["metadata"].get("path", ""),
+                body=body,
+            )
+        )
     return "\n\n".join(parts)
 
 

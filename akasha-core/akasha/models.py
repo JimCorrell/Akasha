@@ -48,5 +48,5 @@ class IngestJobResponse(BaseModel):
     job_id: str
     status: str
     messages: list[str]
-    result: str | None = None   # vault-relative path to the book index note
+    result: str | None = None  # vault-relative path to the book index note
     error: str | None = None

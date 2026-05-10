@@ -1,4 +1,5 @@
 import chromadb
+
 from .config import settings
 
 _client = None
@@ -49,11 +50,13 @@ def search(query_embedding: list[float], limit: int = 5, threshold: float = 0.0)
     for i in range(len(results["ids"][0])):
         score = 1.0 - results["distances"][0][i]  # cosine distance → similarity
         if score >= threshold:
-            output.append({
-                "score": score,
-                "metadata": results["metadatas"][0][i],
-                "snippet": results["documents"][0][i],
-            })
+            output.append(
+                {
+                    "score": score,
+                    "metadata": results["metadatas"][0][i],
+                    "snippet": results["documents"][0][i],
+                }
+            )
     return output
 
 

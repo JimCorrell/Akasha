@@ -8,7 +8,7 @@ Akasha follows a phased approach: validate the concept with existing tools, then
 
 ## Phase 1: Foundation & Validation
 
-**Timeline**: 2-4 weeks  
+**Timeline**: 2-4 weeks
 **Status**: ✅ Complete (skipped — see validation-notes.md)
 
 ### Decision
@@ -19,8 +19,8 @@ Formal validation period skipped. Vault sat unused after setup — treated as th
 
 ## Phase 2: Custom Retrieval Layer
 
-**Timeline**: 4-6 weeks  
-**Status**: 🟡 In Progress  
+**Timeline**: 4-6 weeks
+**Status**: 🟡 In Progress
 **Prerequisites**: Phase 1 validated with clear pain points
 
 ### Goals
@@ -89,8 +89,8 @@ Formal validation period skipped. Vault sat unused after setup — treated as th
 
 ## Phase 3: Extended Clients
 
-**Timeline**: 3-4 weeks  
-**Status**: ⚪ Not Started  
+**Timeline**: 3-4 weeks
+**Status**: ⚪ Not Started
 **Prerequisites**: Phase 2 API stable and in daily use
 
 ### Goals
@@ -140,8 +140,8 @@ Formal validation period skipped. Vault sat unused after setup — treated as th
 
 ## Phase 4: Intelligence & Automation
 
-**Timeline**: 4-6 weeks  
-**Status**: ⚪ Not Started  
+**Timeline**: 4-6 weeks
+**Status**: ⚪ Not Started
 **Prerequisites**: Daily use of Phase 3 clients, validated need for features
 
 ### Goals
@@ -169,7 +169,7 @@ Formal validation period skipped. Vault sat unused after setup — treated as th
 
 ## Phase 5: Collaboration & Sharing (Future)
 
-**Timeline**: TBD  
+**Timeline**: TBD
 **Status**: ⚪ Not Started
 
 ### Potential Features
