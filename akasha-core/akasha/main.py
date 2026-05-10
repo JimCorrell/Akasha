@@ -1,13 +1,19 @@
 import re
+import threading
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
 
 from .config import settings
-from .models import AskRequest, AskResponse, NoteResult, SearchRequest, SearchResponse, StatsResponse
-from . import ask as ask_module, embeddings, store, watcher
+from .models import (
+    AskRequest, AskResponse,
+    IngestJobResponse, IngestRequest,
+    NoteResult, SearchRequest, SearchResponse, StatsResponse,
+)
+from . import ask as ask_module, embeddings, jobs, store, watcher
 
 
 @asynccontextmanager
@@ -139,6 +145,63 @@ def ask(req: AskRequest):
         answer=answer_text,
         sources=sources,
         query_time_ms=round(elapsed_ms, 1),
+    )
+
+
+def _run_ingest_job(job: jobs.Job, path: Path) -> None:
+    """Background thread: ingest a book and update the job as it progresses."""
+    try:
+        from .ingest import ingest
+        from .indexer import index_note
+
+        def on_progress(msg: str) -> None:
+            job.messages.append(msg)
+
+        note_path = ingest(path, settings.vault_path, on_progress=on_progress)
+
+        # Index the newly written notes immediately so they're searchable
+        book_dir = note_path.parent
+        for md in sorted(book_dir.glob("*.md")):
+            index_note(md)
+
+        # Return vault-relative path so Raycast can build the Obsidian URL
+        job.result = str(note_path.relative_to(settings.vault_path))
+        job.status = "done"
+        job.messages.append(f"✅ Done — {note_path.name}")
+    except Exception as e:
+        job.error = str(e)
+        job.status = "error"
+        job.messages.append(f"❌ {e}")
+
+
+@app.post("/ingest", response_model=IngestJobResponse)
+def start_ingest(req: IngestRequest):
+    path = Path(req.path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {req.path}")
+    if path.suffix.lower() not in (".epub", ".pdf"):
+        raise HTTPException(status_code=400, detail="Only .epub and .pdf files are supported")
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=503, detail="AKASHA_ANTHROPIC_API_KEY not configured")
+
+    job = jobs.create()
+    thread = threading.Thread(target=_run_ingest_job, args=(job, path), daemon=True)
+    thread.start()
+
+    return IngestJobResponse(job_id=job.id, status=job.status, messages=job.messages)
+
+
+@app.get("/ingest/{job_id}", response_model=IngestJobResponse)
+def ingest_status(job_id: str):
+    job = jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return IngestJobResponse(
+        job_id=job.id,
+        status=job.status,
+        messages=job.messages,
+        result=job.result,
+        error=job.error,
     )
 
 
