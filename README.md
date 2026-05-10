@@ -2,32 +2,31 @@
 
 > Query the ether of your knowledge
 
-Personal knowledge management system with AI-powered semantic retrieval. Akasha surfaces relevant notes and insights exactly when you need them, across all your work environments.
+Personal knowledge management system with AI-powered semantic retrieval. Akasha surfaces relevant notes and insights exactly when you need them — from anywhere on your Mac.
 
-## Vision
+## What it does
 
-A "second brain" that:
-
-- Automatically semantically links stored knowledge over time
-- Surfaces ideas contextually as you work on projects
-- Works seamlessly whether you're coding, writing, or researching
-- Respects your data ownership (local-first, simple formats)
+- **Search your vault** with natural language from Raycast — results ranked by semantic similarity, not keyword match
+- **Ask questions** and get synthesized answers drawn from your notes, with source citations
+- **Ingest ebooks** (EPUB or PDF) into structured, searchable vault notes — one note per chapter, all via Raycast with live progress
+- **Auto-indexes** as you write — vault watcher picks up new and changed notes in real time
 
 ## Project Status
 
-### Current Phase: Custom Retrieval Layer (Phase 2 — In Progress)
+Everything below is built and in daily use.
 
-- ✅ Project initialized
-- ✅ Phase 1 skipped — vault-only workflow validated as insufficient
-- ✅ FastAPI semantic search service (`akasha-core/`)
-- ✅ Local embeddings via fastembed (no API key required)
-- ✅ ChromaDB vector store
-- ✅ Vault file watcher (auto-indexes on save)
-- ✅ Raycast integration (search from anywhere)
-- ✅ Ebook ingestion pipeline (EPUB + PDF → structured vault notes)
-- ⬜ Retrieval quality tuning (Phase 2.2)
-- ⬜ Context-aware retrieval (Phase 2.4)
-- ⬜ Full TypeScript Raycast extension (Phase 3)
+| Component | Status |
+|---|---|
+| FastAPI semantic search service | ✅ |
+| Local embeddings (fastembed, no API key) | ✅ |
+| ChromaDB vector store | ✅ |
+| Vault file watcher (auto-index on save) | ✅ |
+| Ebook ingestion: EPUB + PDF → Claude → vault notes | ✅ |
+| Raycast extension: Search, Ask, Ingest Book | ✅ |
+| Query-relevant snippet extraction | ✅ |
+| RAG `/ask` endpoint with Claude | ✅ |
+| Background ingest job API | ✅ |
+| Pre-commit hooks + GitHub Actions CI | ✅ |
 
 ## Architecture
 
@@ -35,149 +34,99 @@ A "second brain" that:
 Obsidian Vault (markdown files)
         │
         ├── Manual notes
-        └── Ingested books (EPUB/PDF → Claude API → structured notes)
+        └── Books/ (EPUB/PDF → Claude API → structured notes)
         │
-        ↓ (watchdog file watcher)
-Akasha Core (FastAPI — localhost:8765)
-  ├── Embedding Service (fastembed, local — no API key)
-  ├── Vector Store (ChromaDB at ~/.akasha/chroma)
-  └── Search API (POST /search)
+        ↓  watchdog file watcher
+┌─────────────────────────────────────────┐
+│     Akasha Core  (FastAPI :8765)        │
+│                                         │
+│  /search  — semantic search             │
+│  /ask     — RAG Q&A via Claude          │
+│  /ingest  — background book ingestion   │
+│  /health  /stats                        │
+│                                         │
+│  fastembed (BAAI/bge-small-en-v1.5)     │
+│  ChromaDB (~/.akasha/chroma)            │
+└─────────────────────────────────────────┘
         │
-        ↓ (HTTP)
-Raycast Script Commands
-  ├── Akasha Search  — semantic search from anywhere
-  └── Akasha Open    — open note directly in Obsidian
+        ↓  HTTP
+┌─────────────────────────────────────────┐
+│  Raycast Extension (TypeScript)         │
+│                                         │
+│  Search Akasha  — live semantic search  │
+│  Ask Akasha     — Q&A with citations   │
+│  Ingest Book    — file picker + progress│
+└─────────────────────────────────────────┘
+```
+
+## Quick Start
+
+See **[Setup Guide](docs/setup.md)** for full instructions. The short version:
+
+```bash
+# 1. Install and configure
+cd akasha-core
+poetry install
+cp .env.example .env   # edit AKASHA_VAULT_PATH + AKASHA_ANTHROPIC_API_KEY
+
+# 2. Index your vault
+poetry run akasha-index
+
+# 3. Start the server
+poetry run akasha-serve
+
+# 4. Load the Raycast extension
+# Raycast → Settings → Extensions → + → Add Local Extension → extensions/raycast-akasha
 ```
 
 ## Repository Structure
 
 ```
 akasha/
-├── akasha-core/              # FastAPI service
+├── akasha-core/              # FastAPI service (Python)
 │   ├── akasha/
-│   │   ├── config.py         # Settings (env-driven)
-│   │   ├── main.py           # FastAPI app + vault watcher
-│   │   ├── indexer.py        # Vault scanning + embedding
-│   │   ├── ingest.py         # Ebook ingestion pipeline
-│   │   ├── store.py          # ChromaDB wrapper
-│   │   ├── embeddings.py     # fastembed / OpenAI backends
-│   │   ├── watcher.py        # watchdog file watcher
-│   │   └── cli.py            # akasha-index / akasha-ingest commands
-│   ├── pyproject.toml
-│   └── .env.example
-├── scripts/
-│   └── raycast/              # Raycast Script Commands
-│       ├── akasha-search.py  # Semantic search
-│       └── akasha-open.py    # Open note in Obsidian
-├── docs/                     # Documentation
-│   ├── architecture.md
-│   ├── roadmap.md
-│   ├── setup.md
-│   └── validation-notes.md
-├── vault/                    # Obsidian notes (excluded from git)
-└── books_to_ingest/          # Drop ebooks here (excluded from git)
+│   │   ├── config.py         # Settings via pydantic-settings (AKASHA_ prefix)
+│   │   ├── main.py           # FastAPI app + endpoints
+│   │   ├── indexer.py        # Vault scanning, embedding, change detection
+│   │   ├── ingest.py         # Ebook pipeline: extract → Claude → vault notes
+│   │   ├── ask.py            # RAG: context building + Claude answer generation
+│   │   ├── jobs.py           # In-memory background job tracker
+│   │   ├── embeddings.py     # fastembed (local) or OpenAI backend
+│   │   ├── store.py          # ChromaDB operations
+│   │   ├── watcher.py        # watchdog vault file watcher
+│   │   ├── models.py         # Pydantic request/response models
+│   │   └── cli.py            # akasha-index, akasha-ingest CLI entry points
+│   └── tests/
+│       ├── test_api.py       # FastAPI endpoint tests (mocked deps)
+│       └── test_indexer.py   # Pure-function indexer tests
+├── extensions/raycast-akasha/ # Raycast extension (TypeScript)
+│   └── src/
+│       ├── search.tsx         # Live search with split-pane detail
+│       ├── ask.tsx            # Question → synthesized answer
+│       └── ingest.tsx         # File picker → live progress → Obsidian
+├── scripts/raycast/           # Legacy script commands (superseded by extension)
+├── docs/                      # Architecture, setup, roadmap
+└── .github/workflows/ci.yml  # Python lint+test + TypeScript build
 ```
 
-## Quick Start
-
-### Prerequisites
-
-- macOS
-- Python 3.12+ (via Homebrew: `brew install python`)
-- Poetry (`brew install poetry`)
-- Obsidian
-- Raycast
-
-### Install
+## Development
 
 ```bash
-cd akasha-core
-poetry install
-cp .env.example .env
-# Edit .env — set AKASHA_VAULT_PATH at minimum
+# Run tests
+cd akasha-core && poetry run pytest
+
+# Lint
+poetry run ruff check .
+
+# Pre-commit hooks (runs on every git commit)
+brew install pre-commit && pre-commit install
+
+# Raycast extension dev mode (hot-reload)
+cd extensions/raycast-akasha && npm run dev
 ```
 
-### Index your vault
+## Documentation
 
-```bash
-poetry run akasha-index
-```
-
-### Start the API server
-
-```bash
-poetry run akasha-serve
-# Runs on http://localhost:8765
-# Watches vault for changes and re-indexes automatically
-```
-
-### Ingest an ebook
-
-```bash
-# Requires AKASHA_ANTHROPIC_API_KEY in .env
-poetry run akasha-ingest /path/to/book.epub
-poetry run akasha-ingest /path/to/book.pdf
-```
-
-### Search
-
-```bash
-# Via curl
-curl -s -X POST http://localhost:8765/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "your question here", "limit": 5}'
-
-# Via Raycast (after setup — see docs/setup.md)
-# ⌘ Space → "Akasha Search" → type your query
-```
-
-## Configuration
-
-All settings are prefixed with `AKASHA_` in `.env`:
-
-| Variable | Default | Description |
-|---|---|---|
-| `VAULT_PATH` | `~/vault/akasha` | Path to your Obsidian vault |
-| `CHROMA_PATH` | `~/.akasha/chroma` | ChromaDB data directory |
-| `EMBEDDING_BACKEND` | `local` | `local` or `openai` |
-| `LOCAL_EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | fastembed model |
-| `API_HOST` | `127.0.0.1` | Server host |
-| `API_PORT` | `8765` | Server port |
-| `ANTHROPIC_API_KEY` | _(empty)_ | Required for ebook ingestion |
-| `CLAUDE_MODEL` | `claude-sonnet-4-6` | Model used for ingestion |
-
-## Technology Stack
-
-- **API**: FastAPI + uvicorn (Python 3.14)
-- **Vector Store**: ChromaDB (local, persistent)
-- **Embeddings**: fastembed `BAAI/bge-small-en-v1.5` (local, no API key)
-- **File Watching**: watchdog
-- **Ebook Ingestion**: ebooklib (EPUB), PyMuPDF (PDF), Claude API (summarization)
-- **Dependency Management**: Poetry
-- **Clients**: Raycast Script Commands (Python)
-
-## Philosophy
-
-### Local-First
-
-All data lives on your machine. The vector store, embeddings, and vault are local by default. No telemetry, no cloud lock-in.
-
-### Build Only What's Justified
-
-Phase 1 (Obsidian + Smart Connections only) was validated as insufficient — the workflow didn't fit daily habits. Phase 2 builds the minimum custom layer needed: a search API and lightweight clients.
-
-### Data Portability
-
-Notes are plain markdown with YAML frontmatter. The vector store is a cache — if lost, `akasha-index --force` rebuilds it from the vault in minutes.
-
-## Inspiration
-
-The name "Akasha" comes from the Sanskrit concept of a cosmic record of all knowledge and events. This project aims to create your personal Akashic Records — a queryable repository of everything you've learned and thought about.
-
-## License
-
-MIT
-
-## Author
-
-Jim Correll
+- [Setup Guide](docs/setup.md) — installation, configuration, first run
+- [Architecture](docs/architecture.md) — technical decisions and design
+- [Roadmap](docs/roadmap.md) — what's been built, what's next
