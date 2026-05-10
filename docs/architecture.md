@@ -1,302 +1,236 @@
 # Akasha Architecture
 
-Technical design decisions and architecture evolution.
+Technical design, decisions made, and how the system fits together.
+
+---
 
 ## Design Principles
 
-1. **Hybrid Approach**: Use existing tools for their strengths, build custom only when justified
-2. **Data Portability**: Simple formats (markdown, JSON) that survive tool changes
-3. **Local-First**: Your data lives on your machine, cloud sync is optional
-4. **Universal Access**: Query from any work context (coding, writing, browsing)
-5. **Semantic Intelligence**: AI-powered retrieval beats keyword search
+1. **Local-first** — all data and computation stays on your machine; no cloud dependency at runtime
+2. **Data portability** — plain markdown files, standard formats, no lock-in
+3. **Universal access** — query from any context (Raycast, future: VS Code, terminal)
+4. **Semantic over keyword** — embeddings surface conceptually relevant notes, not just term matches
+5. **Zero friction** — adding knowledge and querying it should require no context switching
 
-## Phase 1: Foundation (Current)
+---
 
-**Goal**: Validate that semantic retrieval actually improves workflow.
-
-### Architecture
+## System Overview
 
 ```
-┌─────────────────────────────────────────┐
-│         Obsidian Vault (Markdown)       │
-│  - Simple, portable storage             │
-│  - Manual and automated capture         │
-└──────────────┬──────────────────────────┘
-               │
-               ↓
-┌──────────────────────────────────────────┐
-│    Smart Connections Plugin (Obsidian)   │
-│  - Generates embeddings via OpenAI       │
-│  - In-app semantic search                │
-└──────────────┬───────────────────────────┘
-               │
-               ↓
-┌──────────────────────────────────────────┐
-│      Raycast Obsidian Extension          │
-│  - macOS-wide quick access               │
-│  - Keyword search + file opening         │
-└──────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│                  Obsidian Vault (Markdown)                 │
+│                                                           │
+│  Manual notes             Books/                          │
+│  Daily notes              ├── Think Like a CTO/           │
+│  Meeting notes            │   ├── Think Like a CTO.md     │
+│  ...                      │   ├── 01 - Managing Up.md     │
+│                           │   └── 02 - Building a Team.md │
+│                           └── ...                          │
+└──────────────────────────┬────────────────────────────────┘
+                           │  watchdog (real-time file events)
+                           ▼
+┌───────────────────────────────────────────────────────────┐
+│                Akasha Core  (FastAPI :8765)                │
+│                                                           │
+│  Indexer                                                  │
+│  ├── Parses frontmatter (python-frontmatter)              │
+│  ├── Extracts title, tags, body, content hash             │
+│  ├── Build embed text:                                    │
+│  │   ├── book-chapter: Summary + Takeaways + Frameworks   │
+│  │   └── other: title + full body                        │
+│  └── Upserts to ChromaDB (skip if hash unchanged)         │
+│                                                           │
+│  Embeddings                                               │
+│  ├── fastembed BAAI/bge-small-en-v1.5 (384-dim, local)   │
+│  └── OpenAI text-embedding-3-small (optional, 1536-dim)  │
+│                                                           │
+│  ChromaDB  (~/.akasha/chroma)                             │
+│  ├── Cosine similarity collection "notes"                 │
+│  └── Stores: embedding + metadata + full cleaned body     │
+│                                                           │
+│  API Endpoints                                            │
+│  ├── POST /search  — embed query → similarity search      │
+│  │                   → extract query-relevant passage     │
+│  ├── POST /ask     — retrieve top notes → Claude RAG      │
+│  ├── POST /ingest  — start background book job            │
+│  ├── GET  /ingest/{id} — poll job status + progress      │
+│  ├── GET  /health                                         │
+│  └── GET  /stats                                          │
+└──────────────────────────┬────────────────────────────────┘
+                           │  HTTP (localhost only)
+                           ▼
+┌───────────────────────────────────────────────────────────┐
+│           Raycast Extension  (TypeScript)                  │
+│                                                           │
+│  Search Akasha                                            │
+│  ├── 300ms debounced live search                          │
+│  ├── Split-pane: result list + detail (snippet, metadata) │
+│  ├── Score colours: green ≥70%, yellow ≥50%, grey below  │
+│  └── Actions: open Obsidian, copy URL, copy path          │
+│                                                           │
+│  Ask Akasha                                               │
+│  ├── Free-text question entry                             │
+│  ├── Detail view: full markdown answer + source sidebar   │
+│  └── Actions: open sources, copy answer                   │
+│                                                           │
+│  Ingest Book                                              │
+│  ├── File picker (EPUB / PDF)                             │
+│  ├── Starts /ingest job, navigates to progress view       │
+│  ├── Polls /ingest/{id} every 2s, shows chapter progress  │
+│  └── On completion: "Open in Obsidian" action             │
+└───────────────────────────────────────────────────────────┘
 ```
 
-### Technology Stack
+---
 
-- **Storage**: Obsidian (markdown files)
-- **Semantic Search**: Smart Connections (OpenAI embeddings)
-- **Quick Access**: Raycast
-- **Capture**: Manual entry + optional Readwise
+## Key Design Decisions
 
-### Limitations
+### Embeddings: local fastembed over OpenAI
 
-- Semantic search only available within Obsidian
-- No context-aware retrieval (doesn't know what you're working on)
-- Switching to Obsidian breaks flow
-- Can't query from VS Code, browser, terminal
+**Decision**: `BAAI/bge-small-en-v1.5` via fastembed (ONNX, 384 dimensions, runs locally).
 
-### Success Criteria
+**Rationale**: onnxruntime is already a transitive dependency of ChromaDB; no GPU needed; no API key; ~33MB model download once. Quality is sufficient for a personal vault at this scale. OpenAI (`text-embedding-3-small`, 1536-dim) is still supported via `AKASHA_EMBEDDING_BACKEND=openai` — switching requires `--force` re-index due to dimension mismatch.
 
-Phase 1 is successful if:
-- Semantic search surfaces useful notes >50% of the time
-- You actively use search instead of relying on memory
-- Clear pain points emerge that justify custom development
+### Vector store: ChromaDB
 
-## Phase 2: Custom Retrieval Layer (Planned)
+**Decision**: ChromaDB with cosine similarity, persisted to `~/.akasha/chroma`.
 
-**Goal**: Build universal semantic retrieval that works from any context.
+**Rationale**: zero-config local persistence; simple Python API; sufficient performance for hundreds to low thousands of notes. Migration to pgvector or Pinecone would be straightforward if scale demands it.
 
-### Architecture
+### Snippet storage: full cleaned body
+
+**Decision**: Store the full cleaned note body in ChromaDB's `documents` field (not a short preview).
+
+**Rationale**: Enables query-time passage extraction. At search time, `_relevant_snippet()` scores each line by query-term overlap and returns a window around the best match. This is significantly more useful than always showing the opening sentence.
+
+### Embed text: section-aware for book chapters
+
+**Decision**: For `type: book-chapter` notes, build embed text from `## Summary`, `## Key Takeaways`, and `## Frameworks` sections only — not the full body.
+
+**Rationale**: The full note body includes headings, "My Notes" placeholders, and blockquote formatting that dilutes the embedding signal. The three knowledge sections are 100% signal.
+
+### Ebook ingestion: Claude tool use
+
+**Decision**: Use Claude's forced tool use (`tool_choice: {type: tool}`) rather than prompting for JSON.
+
+**Rationale**: Raw JSON responses from Claude can contain unescaped quotes from verbatim book text, breaking parsing. Forced tool use returns `block.input` as an already-parsed dict, completely bypassing JSON parsing.
+
+### Book chapter titles: TOC-first
+
+**Decision**: Prefer `book.toc` (EPUB NAV/NCX) as the source of chapter titles, with first-write-wins to prevent sub-sections overwriting chapter titles.
+
+**Rationale**: Heading text extracted from HTML is concatenated and loses word boundaries ("1What is platform engineering"). The EPUB TOC provides clean, pre-formatted titles.
+
+### RAG context: XML-tagged note blocks
+
+**Decision**: Pass retrieved notes to Claude in `<note index="N" title="..." path="...">` XML blocks.
+
+**Rationale**: Claude reliably reads structured XML context and naturally attributes answers ("According to the chapter on Managing Up…"). Context is capped at 3,000 chars per note × 6 notes, keeping total context well within Claude's window.
+
+### Background ingest jobs: daemon threads + in-memory store
+
+**Decision**: `threading.Thread(daemon=True)` + simple in-memory dict, polled via `GET /ingest/{job_id}`.
+
+**Rationale**: Ebook ingestion takes several minutes (one Claude call per chapter). The API must stay responsive. Daemon threads die with the process, which is fine — jobs are ephemeral by design. A task queue (Celery, RQ) would be over-engineered for a single-user local tool.
+
+---
+
+## Data Flow
+
+### Indexing a note
 
 ```
-┌─────────────────────────────────────────┐
-│         Obsidian Vault (Markdown)       │
-│  - File system accessible               │
-└──────────────┬──────────────────────────┘
-               │
-               ↓ (watches for changes)
-┌──────────────────────────────────────────┐
-│         Akasha Core (FastAPI)            │
-│                                          │
-│  ┌────────────────────────────────────┐ │
-│  │  Vault Watcher (watchdog)          │ │
-│  │  - Detects file changes            │ │
-│  │  - Triggers embedding generation   │ │
-│  └────────────────────────────────────┘ │
-│                                          │
-│  ┌────────────────────────────────────┐ │
-│  │  Embedding Service                 │ │
-│  │  - OpenAI API or local models      │ │
-│  │  - Generates vector embeddings     │ │
-│  └────────────────────────────────────┘ │
-│                                          │
-│  ┌────────────────────────────────────┐ │
-│  │  Vector Store                      │ │
-│  │  - Pinecone / pgvector / ChromaDB  │ │
-│  │  - Similarity search               │ │
-│  └────────────────────────────────────┘ │
-│                                          │
-│  ┌────────────────────────────────────┐ │
-│  │  Search API                        │ │
-│  │  POST /search                      │ │
-│  │  - Accepts query + context         │ │
-│  │  - Returns ranked results          │ │
-│  └────────────────────────────────────┘ │
-└──────────────┬───────────────────────────┘
-               │
-               ↓ (HTTP requests)
-┌──────────────────────────────────────────┐
-│         Multiple Clients                 │
-│                                          │
-│  ┌────────────────┐  ┌────────────────┐ │
-│  │ Raycast Ext.   │  │ VS Code Ext.   │ │
-│  │ - Global hotkey│  │ - In-editor    │ │
-│  └────────────────┘  └────────────────┘ │
-│                                          │
-│  ┌────────────────┐  ┌────────────────┐ │
-│  │ CLI Tool       │  │ Web UI         │ │
-│  │ - Terminal use │  │ - Review/curate│ │
-│  └────────────────┘  └────────────────┘ │
-└──────────────────────────────────────────┘
+File saved in Obsidian
+  → watchdog fires FileModifiedEvent
+  → _parse_note(): frontmatter + body extraction
+  → compare content_hash → skip if unchanged
+  → _build_embed_text(): section-aware for book chapters
+  → embeddings.embed() → 384-dim vector
+  → store.upsert(): vector + metadata + cleaned body → ChromaDB
 ```
 
-### Technology Stack (Proposed)
+### Searching
 
-**Backend**
-- **Language**: Python 3.11+
-- **Framework**: FastAPI
-- **Vector Store**: TBD after research
-  - Pinecone (cloud, easy)
-  - pgvector (self-hosted, PostgreSQL)
-  - ChromaDB (simple, local-first)
-- **Embeddings**: OpenAI text-embedding-3-small or sentence-transformers
-- **File Watching**: watchdog
-- **Task Queue**: Optional (for async embedding generation)
-
-**Clients**
-- **Raycast**: TypeScript + Raycast API
-- **CLI**: Python click or typer
-- **VS Code**: TypeScript + VS Code Extension API
-- **Web UI**: React or vanilla JS (minimal)
-
-### Data Flow
-
-1. **Ingestion**
-   - User creates/edits note in Obsidian
-   - Vault watcher detects change
-   - Akasha extracts text + metadata
-   - Generates embedding
-   - Stores in vector DB with reference to file path
-
-2. **Retrieval**
-   - User triggers search from any client
-   - Client sends query + optional context to API
-   - API generates query embedding
-   - Vector DB returns similar notes
-   - API ranks and returns results with snippets
-   - Client displays results with actions (open, copy, etc.)
-
-3. **Context Enhancement** (future)
-   - Detect active application (VS Code, browser, etc.)
-   - Extract current file/page context
-   - Weight search results by relevance to current work
-
-### API Design (Draft)
-
-```python
-# POST /search
-{
-  "query": "fastapi authentication patterns",
-  "context": {
-    "app": "vscode",
-    "file": "/path/to/current/file.py",
-    "recent_files": [...],
-    "workspace": "project-name"
-  },
-  "limit": 5,
-  "threshold": 0.7  # Minimum similarity score
-}
-
-# Response
-{
-  "results": [
-    {
-      "title": "FastAPI PKI Authentication",
-      "path": "dev/fastapi-auth.md",
-      "snippet": "Implementation notes on certificate-based...",
-      "score": 0.92,
-      "created": "2024-01-15T10:30:00Z",
-      "modified": "2024-01-20T14:22:00Z",
-      "tags": ["python", "auth", "fastapi"]
-    }
-  ],
-  "query_embedding_time_ms": 45,
-  "search_time_ms": 12,
-  "total_notes": 347
-}
+```
+User types in Raycast (debounced 300ms)
+  → POST /search {query, limit}
+  → embeddings.embed(query) → query vector
+  → ChromaDB cosine similarity → top N results
+  → _relevant_snippet(body, query): score lines by term overlap
+  → return NoteResult[]  with query-relevant snippets
 ```
 
-### Database Schema (Vector Store)
+### Asking a question
 
-```python
-# Conceptual schema (actual implementation varies by store)
-class NoteEmbedding:
-    id: str                    # UUID
-    file_path: str            # Relative to vault root
-    title: str                # Extracted from frontmatter or filename
-    content_hash: str         # For change detection
-    embedding: List[float]    # 1536-dim for OpenAI, varies for others
-    metadata: dict            # Tags, dates, custom fields
-    chunk_index: int          # If splitting long notes
-    created_at: datetime
-    updated_at: datetime
+```
+User submits question in Raycast
+  → POST /ask {question, limit=6}
+  → embed question → retrieve top 6 notes (threshold 0.3)
+  → build XML context: <note> blocks with cleaned body
+  → Claude: answer grounded in context, cite by note title
+  → return AskResponse {answer, sources[]}
 ```
 
-### Scaling Considerations
+### Ingesting a book
 
-**Current Scale** (estimated):
-- ~500-1000 notes
-- ~10 notes added per week
-- Single user, local access
+```
+User picks file in Raycast → POST /ingest {path}
+  → validate: exists, .epub/.pdf, API key configured
+  → jobs.create() → daemon thread starts
+  → thread: extract_epub/pdf() → chapters[]
+  → for each chapter:
+       process_chapter() → Claude tool use → {summary, takeaways, ...}
+       write_chapter_note() → .md in vault
+       job.messages.append("✓ Chapter N: Title")
+  → process_book_overview() → book index note
+  → index_note() for all written .md files
+  → job.status = "done", job.result = vault-relative path
+Raycast polls GET /ingest/{id} every 2s → shows progress → opens Obsidian on done
+```
 
-**Design Decisions**:
-- Start simple: ChromaDB for local development
-- Easy migration path to Pinecone or pgvector if needed
-- Batch embedding generation (process 10 notes at a time)
-- Cache embeddings (don't regenerate unless content changed)
+---
 
-### Security & Privacy
+## File Structure
 
-- **Local-First**: All data stays on your machine by default
-- **API Access**: Localhost only initially, no external exposure
-- **API Keys**: Stored in environment variables, never in code
-- **Vault Access**: Read-only for Akasha Core
-- **No Analytics**: Zero telemetry, your data is yours
+```
+akasha-core/akasha/
+├── config.py      pydantic-settings, AKASHA_ env prefix
+├── main.py        FastAPI app, all endpoints, _relevant_snippet, _run_ingest_job
+├── indexer.py     _parse_note, _clean_body, _build_embed_text, index_vault
+├── ingest.py      extract_epub/pdf, _call_claude_tool, write_chapter_note
+├── ask.py         build_context (XML blocks), answer (Claude call)
+├── jobs.py        Job dataclass, in-memory dict, thread-safe create/get
+├── embeddings.py  embed() / embed_batch() dispatching to fastembed or OpenAI
+├── store.py       ChromaDB upsert / delete / search / count
+├── watcher.py     watchdog observer, re-indexes on file events
+├── models.py      Pydantic models for all requests and responses
+└── cli.py         akasha-index (typer), akasha-ingest (typer) CLI entry points
+```
 
-## Phase 3: Advanced Features (Future)
+---
 
-Potential additions based on Phase 2 learnings:
+## CI / Quality
 
-- **Automatic Linking**: Suggest connections between notes
-- **Topic Clustering**: Visualize knowledge domains
-- **Temporal Analysis**: Track how ideas evolve over time
-- **Multi-Modal**: Support for images, PDFs, code snippets
-- **Collaborative**: Share specific notes or collections
-- **Mobile**: iOS/Android companion apps
+| Tool | Purpose |
+|---|---|
+| ruff | Lint + format (replaces flake8, black, isort) |
+| pytest | 27 tests: API endpoints (mocked) + pure-function indexer logic |
+| pre-commit | Runs ruff, format check, secret detection, TS build on every commit |
+| GitHub Actions | Python (lint + test) + TypeScript (build) on every PR |
 
-## Decision Log
+---
 
-### Vector Store Selection (TBD)
+## Environment Variables
 
-**Options Considered**:
-
-1. **Pinecone**
-   - ✅ Managed, no maintenance
-   - ✅ Fast, reliable
-   - ❌ Cloud dependency
-   - ❌ Cost ($70+/mo at scale)
-
-2. **pgvector**
-   - ✅ Self-hosted, full control
-   - ✅ Leverages existing PostgreSQL knowledge
-   - ❌ Setup complexity
-   - ❌ Performance tuning needed
-
-3. **ChromaDB**
-   - ✅ Simple, local-first
-   - ✅ Good for development
-   - ❌ Less battle-tested at scale
-   - ✅ Easy migration path to others
-
-**Decision**: Start with ChromaDB for Phase 2 prototype. Reevaluate if performance becomes an issue.
-
-### Embedding Model (TBD)
-
-**Options**:
-
-1. **OpenAI text-embedding-3-small**
-   - ✅ High quality, proven
-   - ✅ 1536 dimensions
-   - ❌ API cost (~$0.02/1M tokens)
-   - ❌ Cloud dependency
-
-2. **sentence-transformers (local)**
-   - ✅ Free, runs locally
-   - ✅ Privacy (no external calls)
-   - ❌ Requires GPU for speed
-   - ❌ Quality varies by model
-
-**Decision**: Start with OpenAI for quality, add local option later for privacy-conscious users.
-
-## Questions to Answer in Phase 1
-
-- [ ] How often do you actually use semantic search vs. keyword?
-- [ ] What contexts trigger the need to search notes?
-- [ ] How important is speed? (sub-second vs. a few seconds)
-- [ ] Would automated capture (Readwise, etc.) add value?
-- [ ] What metadata would improve search? (tags, dates, projects)
-- [ ] Is context-awareness worth the complexity?
-
-## References
-
-- [FastAPI Documentation](https://fastapi.tiangolo.com/)
-- [OpenAI Embeddings Guide](https://platform.openai.com/docs/guides/embeddings)
-- [ChromaDB Documentation](https://docs.trychroma.com/)
-- [Raycast Extension API](https://developers.raycast.com/)
+| Variable | Default | Description |
+|---|---|---|
+| `AKASHA_VAULT_PATH` | `~/vault/akasha` | Path to Obsidian vault |
+| `AKASHA_CHROMA_PATH` | `~/.akasha/chroma` | ChromaDB persistence directory |
+| `AKASHA_EMBEDDING_BACKEND` | `local` | `local` or `openai` |
+| `AKASHA_LOCAL_EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | fastembed model name |
+| `AKASHA_OPENAI_API_KEY` | — | Required if backend is `openai` |
+| `AKASHA_OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | OpenAI model |
+| `AKASHA_ANTHROPIC_API_KEY` | — | Required for `/ask` and ebook ingestion |
+| `AKASHA_CLAUDE_MODEL` | `claude-sonnet-4-6` | Claude model for extraction + RAG |
+| `AKASHA_API_HOST` | `127.0.0.1` | API bind address |
+| `AKASHA_API_PORT` | `8765` | API port |
