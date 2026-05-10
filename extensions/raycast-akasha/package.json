@@ -12,6 +12,12 @@
       "title": "Search Akasha",
       "description": "Semantic search across your personal knowledge base",
       "mode": "view"
+    },
+    {
+      "name": "ask",
+      "title": "Ask Akasha",
+      "description": "Ask a question and get an answer synthesized from your knowledge base",
+      "mode": "view"
     }
   ],
   "preferences": [

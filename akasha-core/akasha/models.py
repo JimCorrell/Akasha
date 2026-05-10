@@ -27,3 +27,14 @@ class StatsResponse(BaseModel):
     vault_path: str
     chroma_path: str
     embedding_model: str
+
+
+class AskRequest(BaseModel):
+    question: str
+    limit: int = 6  # notes to retrieve as context
+
+
+class AskResponse(BaseModel):
+    answer: str
+    sources: list[NoteResult]
+    query_time_ms: float
