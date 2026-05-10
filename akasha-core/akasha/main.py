@@ -6,8 +6,8 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 
 from .config import settings
-from .models import NoteResult, SearchRequest, SearchResponse, StatsResponse
-from . import embeddings, store, watcher
+from .models import AskRequest, AskResponse, NoteResult, SearchRequest, SearchResponse, StatsResponse
+from . import ask as ask_module, embeddings, store, watcher
 
 
 @asynccontextmanager
@@ -102,6 +102,43 @@ def search(req: SearchRequest):
         results=results,
         query_time_ms=round(elapsed_ms, 1),
         total_notes=store.count(),
+    )
+
+
+@app.post("/ask", response_model=AskResponse)
+def ask(req: AskRequest):
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=503, detail="AKASHA_ANTHROPIC_API_KEY not configured")
+
+    t0 = time.perf_counter()
+    query_embedding = embeddings.embed(req.question)
+    raw = store.search(query_embedding, limit=req.limit, threshold=0.3)
+
+    if not raw:
+        raise HTTPException(status_code=404, detail="No relevant notes found")
+
+    answer_text = ask_module.answer(req.question, raw)
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+
+    sources = [
+        NoteResult(
+            title=r["metadata"].get("title", ""),
+            path=r["metadata"].get("path", ""),
+            snippet=_relevant_snippet(r["snippet"], req.question),
+            score=round(r["score"], 4),
+            tags=[t for t in r["metadata"].get("tags", "").split(",") if t],
+            modified=r["metadata"].get("modified"),
+        )
+        for r in raw
+    ]
+
+    return AskResponse(
+        answer=answer_text,
+        sources=sources,
+        query_time_ms=round(elapsed_ms, 1),
     )
 
 
